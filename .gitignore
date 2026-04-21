@@ -1,0 +1,28 @@
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data and outputs
+data/output/
+data/input_pdfs/
+data/chroma/
+*.json
+*.jsonl
+*.log
+neo4j_debug.log
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
