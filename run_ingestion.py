@@ -1,22 +1,22 @@
-#!/usr/bin/env python3
-"""Ingestion CLI: PDF parse + chunk manifest generation."""
+"""Run Stage 1: Fetch document metadata from DB and download PDFs from S3.
 
-from __future__ import annotations
+Usage:
+  python run_ingestion.py
+"""
 
-import argparse
+import logging
 
+from src.obligation_pipeline.config import Settings
 from src.obligation_pipeline.stages import run_ingestion_stage
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run ingestion stage for obligation pipeline.")
-    parser.add_argument("--input-dir", type=str, default="data/input_pdfs")
-    parser.add_argument("--output-dir", type=str, default="data/output")
-    parser.add_argument("--version", type=str, required=True)
-    args = parser.parse_args()
-    run_ingestion_stage(args.input_dir, args.output_dir, args.version)
-    return 0
+def main() -> None:
+    settings = Settings()
+    logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO),
+                        format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    manifest_path = run_ingestion_stage(settings)
+    print(f"Ingestion complete. Manifest: {manifest_path}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

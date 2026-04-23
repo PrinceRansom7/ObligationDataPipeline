@@ -14,10 +14,10 @@ __pycache__/
 
 # Data and outputs
 data/output/
-data/input_pdfs/
+data/ingested/
+data/chunks/
+data/graph/
 data/chroma/
-*.json
-*.jsonl
 *.log
 neo4j_debug.log
 
@@ -26,3 +26,4 @@ neo4j_debug.log
 .idea/
 *.swp
 *.swo
+data/input_pdfs/

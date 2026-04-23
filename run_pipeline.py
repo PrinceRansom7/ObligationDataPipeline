@@ -1,32 +1,42 @@
-#!/usr/bin/env python3
-"""Orchestrator CLI: run ingestion, extraction, vector ingest, and graph ingest."""
+"""Run the full 5-stage obligation data pipeline.
 
-from __future__ import annotations
+Usage:
+  python run_pipeline.py --version v1.0.0
+  python run_pipeline.py --version v1.0.0 --skip-ingest --skip-vector --limit 5
+"""
 
 import argparse
-import asyncio
+import logging
+import sys
 
-from src.obligation_pipeline.pipeline import run_pipeline
+from src.obligation_pipeline.config import Settings
+from src.obligation_pipeline.pipeline import run_full_pipeline
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate obligation extraction dataset from PDFs.")
-    parser.add_argument("--input-dir", type=str, default="data/input_pdfs")
-    parser.add_argument("--output-dir", type=str, default="data/output")
-    parser.add_argument("--version", type=str, required=True, help="Dataset version tag, e.g. v1.0.0")
-    parser.add_argument("--skip-vector", action="store_true", help="Skip vector DB ingest stage")
-    parser.add_argument("--skip-graph", action="store_true", help="Skip graph DB ingest stage")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Obligation Data Pipeline — Full 5-Stage Run")
+    parser.add_argument("--version", default="v1.0.0", help="Dataset version tag (default: v1.0.0)")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of documents to process")
+    parser.add_argument("--skip-ingest", action="store_true", help="Skip DB+S3 ingestion (use existing manifest)")
+    parser.add_argument("--skip-parse", action="store_true", help="Skip parse/chunk (use existing chunks)")
+    parser.add_argument("--skip-vector", action="store_true", help="Skip vector DB ingest")
+    parser.add_argument("--skip-graph", action="store_true", help="Skip graph DB ingest")
     args = parser.parse_args()
-    return asyncio.run(
-        run_pipeline(
-            args.input_dir,
-            args.output_dir,
-            args.version,
-            do_vector_ingest=not args.skip_vector,
-            do_graph_ingest=not args.skip_graph,
-        )
+
+    settings = Settings()
+    logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO),
+                        format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    summary = run_full_pipeline(
+        settings,
+        version=args.version,
+        skip_ingest=args.skip_ingest,
+        skip_parse=args.skip_parse,
+        skip_vector=args.skip_vector,
+        skip_graph=args.skip_graph,
+        limit=args.limit,
     )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

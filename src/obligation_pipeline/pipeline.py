@@ -1,73 +1,87 @@
-"""Orchestrator that runs all pipeline stages in sequence."""
+"""Full 5-stage obligation data pipeline orchestrator."""
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
+from typing import Optional
 
-from dotenv import load_dotenv
-
-from .config import Settings
-from .stages import run_extraction_stage, run_graph_ingest_stage, run_ingestion_stage, run_vector_ingest_stage
+from src.obligation_pipeline.config import Settings
+from src.obligation_pipeline.stages import (
+    run_ingestion_stage,
+    run_parse_stage,
+    run_extraction_stage,
+    run_vector_ingest_stage,
+    run_graph_ingest_stage,
+)
 
 logger = logging.getLogger(__name__)
 
 
-async def run_pipeline(
-    input_dir: str,
-    output_dir: str,
-    dataset_version: str,
-    do_vector_ingest: bool = True,
-    do_graph_ingest: bool = True,
-) -> int:
-    load_dotenv()
-    settings = Settings()
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+def run_full_pipeline(
+    settings: Settings,
+    version: str = "v1.0.0",
+    skip_ingest: bool = False,
+    skip_parse: bool = False,
+    skip_vector: bool = False,
+    skip_graph: bool = False,
+    limit: Optional[int] = None,
+) -> dict:
+    """
+    Run all 5 stages of the obligation data pipeline.
 
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    report_path = out_dir / f"run_report_{dataset_version}.json"
-    try:
-        chunks, _ = run_ingestion_stage(input_dir, output_dir, dataset_version)
-        records, _ = await run_extraction_stage(output_dir, dataset_version)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Pipeline failed before ingest stages: %s", exc)
-        return 1
+    Stages:
+      1. Ingestion: DB + S3 → manifest.json + PDFs
+      2. Parse & Chunk: PDFs → legal hierarchy → ontology chunks
+      3. Extraction: chunks → OpenAI → obligation JSONL
+      4. Vector Ingest: records → ChromaDB
+      5. Graph Ingest: records → Neo4j
 
-    vector_count = 0
-    graph_count = 0
-    if do_vector_ingest and settings.enable_vector_ingest:
-        try:
-            vector_count = run_vector_ingest_stage(output_dir, dataset_version)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Vector ingest skipped due to error: %s", exc)
-    if do_graph_ingest and settings.enable_graph_ingest:
-        try:
-            graph_count = run_graph_ingest_stage(output_dir, dataset_version)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Graph ingest skipped due to error: %s", exc)
+    Returns a summary dict with stage results.
+    """
+    summary: dict = {"version": version, "stages": {}}
 
-    rejects_count = 0
-    rejects_path = out_dir / f"rejects_{dataset_version}.jsonl"
-    if rejects_path.exists():
-        with open(rejects_path, encoding="utf-8") as f:
-            rejects_count = sum(1 for _ in f if _.strip())
+    # Stage 1: Ingestion
+    if not skip_ingest:
+        logger.info("=== Stage 1: Ingestion (DB + S3) ===")
+        manifest_path = run_ingestion_stage(settings)
+        summary["stages"]["ingestion"] = {"manifest": str(manifest_path)}
+    else:
+        manifest_path = settings.ingest_manifest_path or Path(settings.output_base) / "manifest.json"
+        logger.info("Skipping ingestion; using manifest: %s", manifest_path)
 
-    report = {
-        "dataset_version": dataset_version,
-        "pipeline_version": settings.pipeline_version,
-        "chunks_total": len(chunks),
-        "records_valid": len(records),
-        "records_rejected": rejects_count,
-        "vector_ingested": vector_count,
-        "graph_ingested": graph_count,
+    # Stage 2: Parse & Chunk
+    if not skip_parse:
+        logger.info("=== Stage 2: Parse & Chunk ===")
+        chunks_path = run_parse_stage(settings, manifest_path=manifest_path, limit=limit)
+        summary["stages"]["parse"] = {"chunks_path": str(chunks_path)}
+    else:
+        chunks_path = settings.chunks_ontology_path or Path(settings.chunks_output_dir) / "chunks_ontology.jsonl"
+        logger.info("Skipping parse; using chunks: %s", chunks_path)
+
+    # Stage 3: Extraction
+    logger.info("=== Stage 3: Obligation Extraction ===")
+    records, raw_path = run_extraction_stage(settings, chunks_path=chunks_path, version=version, limit=limit)
+    summary["stages"]["extraction"] = {
+        "total_records": len(records),
+        "output_path": str(raw_path),
     }
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
 
-    logger.info("Done. report=%s", report_path)
-    return 0
+    # Stage 4: Vector Ingest
+    if not skip_vector:
+        logger.info("=== Stage 4: Vector Ingest ===")
+        vector_count = run_vector_ingest_stage(records, settings)
+        summary["stages"]["vector_ingest"] = {"count": vector_count}
+    else:
+        logger.info("Skipping vector ingest")
+
+    # Stage 5: Graph Ingest
+    if not skip_graph:
+        logger.info("=== Stage 5: Graph Ingest ===")
+        graph_count = run_graph_ingest_stage(records, settings)
+        summary["stages"]["graph_ingest"] = {"count": graph_count}
+    else:
+        logger.info("Skipping graph ingest")
+
+    logger.info("Pipeline complete: %s", summary)
+    return summary

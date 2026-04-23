@@ -55,6 +55,8 @@ def ingest_records_to_chroma(records: list[ObligationRecord], settings: Settings
                 "chunk_id": r.metadata.source_chunk.chunk_id,
                 "page_number": r.metadata.source_chunk.page_number or -1,
                 "vector_id": r.linkages.vector_id,
+                "confidence_score": r.evaluation.confidence_score,
+                "confidence_tier": r.evaluation.confidence_tier,
             }
         )
     batch = 100

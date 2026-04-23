@@ -1,2 +1,1 @@
-"""Obligation pipeline modules for staged dataset generation."""
-
+"""Obligation Data Pipeline — GraphRag-powered structured extraction."""

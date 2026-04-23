@@ -108,8 +108,87 @@ class NonObligationOutput(BaseModel):
     reason: str
 
 
+# ── Composite Confidence Scoring ────────────────────────────────────────
+#
+# A robust confidence score combining multiple signals:
+#   classification, modality, completeness, reasoning, grounding.
+#
+# Formula:
+#   confidence = w1*classification + w2*modality + w3*completeness
+#                + w4*reasoning + w5*grounding
+#
+# Default weights: 0.25, 0.15, 0.20, 0.15, 0.25
+# Tiers: high (≥0.90) → accept, medium (0.70–0.90) → review, low (<0.70) → reject
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class ConfidenceBreakdown(BaseModel):
+    """Multi-signal confidence breakdown for auditability.
+
+    Each component is normalized to [0,1]. The composite confidence_score
+    on Evaluation is a weighted sum of these.
+    """
+
+    classification_confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Model's probability that the classification label is correct. "
+            "Calibrate via temperature scaling on held-out data."
+        ),
+    )
+    modality_confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Strength of deontic cues: "
+            "shall/must → 1.0, should → 0.6, may/can → 0.2, none → 0.1."
+        ),
+    )
+    extraction_completeness: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Fraction of required schema fields (subject, action, conditions, "
+            "deadline, etc.) that were successfully extracted."
+        ),
+    )
+    reasoning_consistency: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Logical alignment between chain-of-thought reasoning steps "
+            "and final output. Catches contradictions."
+        ),
+    )
+    grounding_score: float = Field(
+        default=0.0, ge=0.0, le=1.0,
+        description=(
+            "Overlap / entailment between extracted obligation text and "
+            "source chunk text. Low score flags potential hallucination."
+        ),
+    )
+
+
 class Evaluation(BaseModel):
-    confidence_score: float
+    """Quality evaluation with composite confidence scoring.
+
+    confidence_score is computed as:
+      w1*classification + w2*modality + w3*completeness + w4*reasoning + w5*grounding
+
+    confidence_breakdown provides per-signal scores for auditability.
+    confidence_tier provides a human-readable bucket (high/medium/low).
+    hallucination_flag is set when grounding_score < 0.3.
+    """
+
+    confidence_score: float = Field(
+        ge=0.0, le=1.0,
+        description="Composite weighted confidence score.",
+    )
+    confidence_breakdown: ConfidenceBreakdown = Field(
+        default_factory=ConfidenceBreakdown,
+        description="Per-signal confidence breakdown for auditability.",
+    )
+    confidence_tier: str = Field(
+        default="low",
+        description="High (≥0.90), medium (0.70–0.90), low (<0.70).",
+    )
     risk_level: str
     hallucination_flag: bool = False
 

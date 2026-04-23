@@ -1,22 +1,33 @@
-#!/usr/bin/env python3
-"""Extraction CLI: chunk manifest to structured obligation records."""
+"""Run Stage 3: Extract obligations from ontology chunks using OpenAI.
 
-from __future__ import annotations
+Usage:
+  python run_extract.py --version v1.0.0
+  python run_extract.py --version v1.0.0 --limit 50
+"""
 
 import argparse
-import asyncio
+import logging
 
+from src.obligation_pipeline.config import Settings
 from src.obligation_pipeline.stages import run_extraction_stage
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run extraction stage for obligation pipeline.")
-    parser.add_argument("--output-dir", type=str, default="data/output")
-    parser.add_argument("--version", type=str, required=True)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Stage 3: Obligation Extraction")
+    parser.add_argument("--version", default="v1.0.0", help="Dataset version tag")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks")
+    parser.add_argument("--chunks", default=None, help="Path to chunks JSONL")
     args = parser.parse_args()
-    asyncio.run(run_extraction_stage(args.output_dir, args.version))
-    return 0
+
+    settings = Settings()
+    logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO),
+                        format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    from pathlib import Path
+    chunks_path = Path(args.chunks) if args.chunks else None
+    records, raw_path = run_extraction_stage(settings, chunks_path=chunks_path, version=args.version, limit=args.limit)
+    print(f"Extraction complete: {len(records)} records → {raw_path}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

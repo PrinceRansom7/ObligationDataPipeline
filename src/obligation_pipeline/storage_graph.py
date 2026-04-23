@@ -26,7 +26,9 @@ def ingest_records_to_neo4j(records: list[ObligationRecord], settings: Settings)
                     MERGE (d:Document {id:$doc_id})
                     SET d.title = $doc_title
                     MERGE (c:Chunk {id:$chunk_id})
-                    SET c.text = $chunk_text, c.classification = $classification
+                    SET c.text = $chunk_text, c.classification = $classification,
+                        c.confidence_score = $confidence_score,
+                        c.confidence_tier = $confidence_tier
                     MERGE (d)-[:CONTAINS]->(c)
                     """,
                     doc_id=doc_id,
@@ -34,6 +36,8 @@ def ingest_records_to_neo4j(records: list[ObligationRecord], settings: Settings)
                     chunk_id=chunk_id,
                     chunk_text=rec.context.raw_text,
                     classification=cls,
+                    confidence_score=rec.evaluation.confidence_score,
+                    confidence_tier=rec.evaluation.confidence_tier,
                 )
                 if cls == "obligation" and isinstance(rec.output, list):
                     for obl in rec.output:
