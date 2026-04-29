@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     # --------------------------------------------------
     use_llm_structure_parser: bool = Field(default=False, alias="USE_LLM_STRUCTURE_PARSER")
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
-    llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
+    llm_model: str = Field(default="gpt-4o-2024-08-06", alias="LLM_MODEL")
     llm_max_tokens: int = Field(default=4000, alias="LLM_MAX_TOKENS")
     llm_api_key: Optional[str] = Field(default=None, alias="LLM_API_KEY")
 
@@ -138,8 +138,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     use_openai: bool = Field(default=True, alias="USE_OPENAI")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
-    max_concurrency: int = Field(default=8, alias="MAX_CONCURRENCY")
+    openai_model: str = Field(default="gpt-4o-2024-08-06", alias="OPENAI_MODEL")
+    max_concurrency: int = Field(default=2, alias="MAX_CONCURRENCY")
     max_retries: int = Field(default=4, alias="MAX_RETRIES")
     max_input_tokens: int = Field(default=4096, alias="MAX_INPUT_TOKENS")
     max_output_tokens: int = Field(default=1024, alias="MAX_OUTPUT_TOKENS")

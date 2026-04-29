@@ -193,7 +193,28 @@ def run_extraction_stage(
     records: list[ObligationRecord] = []
     rejects: list[dict[str, Any]] = []
 
+    semaphore = asyncio.Semaphore(settings.max_concurrency)
+
+    async def safe_extract(inp: ExtractInput):
+        async with semaphore:
+            try:
+                rec = await extract_record(inp, settings, client=openai_client)
+                valid, err = validate_record(rec)
+                if valid:
+                    records.append(rec)
+                    print(f"Extracted: {inp.chunk_id} -> {rec.classification}")
+                else:
+                    rejects.append({"chunk_id": inp.chunk_id, "error": err})
+                    print(f"Validation failed: {inp.chunk_id} -> {err}")
+            except Exception as e:
+                logger.warning("Extraction failed for %s: %s", inp.chunk_id, e)
+                rejects.append({"chunk_id": inp.chunk_id, "error": str(e)})
+                print(f"Error processing {inp.chunk_id}: {e}")
+            finally:
+                await asyncio.sleep(1.5)
+
     async def _extract_all():
+        tasks = []
         for chunk in chunks:
             doc_title = chunk.get("act_name") or chunk.get("title") or "Unknown"
             filename = (chunk.get("local_path") or chunk.get("s3_key") or "unknown.pdf")
@@ -216,16 +237,9 @@ def run_extraction_stage(
                 regulator=chunk.get("regulator"),
                 jurisdiction=chunk.get("jurisdiction"),
             )
-            try:
-                rec = await extract_record(inp, settings, client=openai_client)
-                valid, err = validate_record(rec)
-                if valid:
-                    records.append(rec)
-                else:
-                    rejects.append({"chunk_id": inp.chunk_id, "error": err})
-            except Exception as e:
-                logger.warning("Extraction failed for %s: %s", inp.chunk_id, e)
-                rejects.append({"chunk_id": inp.chunk_id, "error": str(e)})
+            tasks.append(safe_extract(inp))
+        if tasks:
+            await asyncio.gather(*tasks)
 
     asyncio.run(_extract_all())
 
@@ -268,50 +282,14 @@ def run_extraction_stage(
             "obligation": sum(1 for r in records if r.classification == "obligation"),
             "non_obligation": sum(1 for r in records if r.classification == "non_obligation"),
             "neutral": sum(1 for r in records if r.classification == "neutral"),
-        },
-        "avg_confidence": round(sum(r.evaluation.confidence_score for r in records) / max(len(records), 1), 4),
-        "confidence_tiers": {
-            "high": sum(1 for r in records if r.evaluation.confidence_tier == "high"),
-            "medium": sum(1 for r in records if r.evaluation.confidence_tier == "medium"),
-            "low": sum(1 for r in records if r.evaluation.confidence_tier == "low"),
-        },
+        }
     }
     report_path = out_dir / f"run_report_{version}.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
     logger.info(
-        "Extraction complete: %d records (%d obligations, %d rejected), avg confidence: %.4f",
-        len(records), report["classifications"]["obligation"], len(rejects), report["avg_confidence"],
+        "Extraction complete: %d records (%d obligations, %d rejected)",
+        len(records), report["classifications"]["obligation"], len(rejects)
     )
     return records, raw_path
-
-
-# ── Stage 4: Vector Ingest ──────────────────────────────────────────────
-
-
-def run_vector_ingest_stage(records: list[ObligationRecord], settings: Settings) -> int:
-    """Ingest records into ChromaDB."""
-    if not settings.enable_vector_ingest:
-        logger.info("Vector ingest disabled")
-        return 0
-    from src.obligation_pipeline.storage_vector import ingest_records_to_chroma
-
-    count = ingest_records_to_chroma(records, settings)
-    logger.info("Ingested %d records into ChromaDB", count)
-    return count
-
-
-# ── Stage 5: Graph Ingest ───────────────────────────────────────────────
-
-
-def run_graph_ingest_stage(records: list[ObligationRecord], settings: Settings) -> int:
-    """Ingest records into Neo4j."""
-    if not settings.enable_graph_ingest:
-        logger.info("Graph ingest disabled")
-        return 0
-    from src.obligation_pipeline.storage_graph import ingest_records_to_neo4j
-
-    count = ingest_records_to_neo4j(records, settings)
-    logger.info("Ingested %d records into Neo4j", count)
-    return count

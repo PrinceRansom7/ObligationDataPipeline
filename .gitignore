@@ -27,3 +27,5 @@ neo4j_debug.log
 *.swp
 *.swo
 data/input_pdfs/
+test_openai.py
+test_schema.py

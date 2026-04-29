@@ -22,6 +22,10 @@ def main() -> None:
     settings = Settings()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO),
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    
+    # Silence noisy third-party network retries to keep the terminal clean
+    #logging.getLogger("httpx").setLevel(logging.WARNING)
+    #logging.getLogger("openai").setLevel(logging.WARNING)
 
     from pathlib import Path
     chunks_path = Path(args.chunks) if args.chunks else None

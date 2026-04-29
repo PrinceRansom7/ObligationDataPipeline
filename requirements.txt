@@ -2,7 +2,7 @@
 # ==================================================
 
 # Core: OpenAI structured extraction
-openai>=1.30.0
+openai>=1.42.0 
 
 # Data models + environment config
 pydantic>=2.7.0
